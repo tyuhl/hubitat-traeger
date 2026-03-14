@@ -321,6 +321,8 @@ private void handleStatePayload(Map payload) {
     if (s.probe_set != null) { sendEvent(name:"probeSetTemperature", value:s.probe_set,  unit:unit) }
 
     def stateCode = s.system_status
+    // Capture previous state before sendEvent updates currentValue (needed for edge detection)
+    def prevGrillState = device.currentValue("grillState")
     if (stateCode != null) {
         def stateName = grillStateName(stateCode as int)
         sendEvent(name:"grillStateCode", value:stateCode)
@@ -342,8 +344,8 @@ private void handleStatePayload(Map payload) {
         if (s.probe_state == null) sendEvent(name:"probeState", value:ps)
     }
 
-    def timerStart = (s.cook_timer_start ?: s.sys_timer_start ?: 0) as Long
-    def timerEnd   = (s.cook_timer_end   ?: s.sys_timer_end   ?: 0) as Long
+    def timerStart = ((s.cook_timer_start != null ? s.cook_timer_start : s.sys_timer_start) ?: 0) as Long
+    def timerEnd   = ((s.cook_timer_end   != null ? s.cook_timer_end   : s.sys_timer_end)   ?: 0) as Long
     def nowSec     = (now() / 1000L) as Long
     if (timerStart > 0 && timerEnd > nowSec) {
         def rem  = timerEnd - nowSec
@@ -354,7 +356,7 @@ private void handleStatePayload(Map payload) {
         sendEvent(name:"timerRemaining", value:"")
     }
     // Pellet level
-    def pelletLevel = s.pellet_level ?: s.pellet ?: s.pellets
+    def pelletLevel = s.pellet_level != null ? s.pellet_level : (s.pellet != null ? s.pellet : s.pellets)
     if (pelletLevel != null) {
         def pct = pelletLevel as int
         sendEvent(name:"pelletLevel", value:pct, unit:"%")
@@ -391,14 +393,12 @@ private void handleStatePayload(Map payload) {
 
     // Button 4: grill offline
     if (stateCode == 99) {
-        def prev = device.currentValue("grillState")
-        if (prev != "offline") pushButton(4)
+        if (prevGrillState != "offline") pushButton(4)
     }
 
     // Button 1: preheat complete — grill transitions from preheating to cooking
     if (stateCode in [6, 7]) {
-        def prev = device.currentValue("grillState")
-        if (prev == "preheating") pushButton(1)
+        if (prevGrillState == "preheating") pushButton(1)
     }
     sendEvent(name:"lastUpdate", value:new Date().toString())
 }
