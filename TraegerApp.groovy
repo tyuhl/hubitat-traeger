@@ -144,8 +144,8 @@ def authenticate() {
             ],
             body: bodyJson
         ]) { resp ->
-            def responseText = resp.data.text
-            def result = new groovy.json.JsonSlurper().parseText(responseText).AuthenticationResult
+            def parsed = resp.data instanceof Map ? resp.data : new groovy.json.JsonSlurper().parseText(resp.data.text)
+            def result = parsed.AuthenticationResult
             state.accessToken  = result.IdToken
             state.refreshToken = result.RefreshToken
             state.tokenExpires = now() + ((result.ExpiresIn - tokenRefreshMargin()) * 1000L)
@@ -221,7 +221,7 @@ String getSignedMqttUrl() {
             body:    [:]
         ]) { resp ->
             state.mqttUrl        = resp.data.signedUrl
-            def expSec           = resp.data.expirationSeconds as Long
+            def expSec           = (resp.data.expirationSeconds ?: 300) as Long
             state.mqttUrlExpires = now() + (expSec * 1000L)
             log.info "[TraegerApp] MQTT URL obtained (expires ${expSec}s): ${state.mqttUrl?.take(60)}…"
         }
