@@ -383,7 +383,7 @@ private void handleStatePayload(Map payload) {
     // Errors
     if (s.errors != null) {
         def errVal = s.errors as int
-        def prevErr = device.currentValue("errors") as int ?: 0
+        def prevErr = (device.currentValue("errors") ?: 0) as int
         sendEvent(name:"errors", value:errVal)
         // Button 4: new error appeared
         if (errVal > 0 && prevErr == 0) pushButton(4)
@@ -446,7 +446,7 @@ private String heatingStateName(int stateCode, int current, int target) {
 private String thermostatOpState(int stateCode, Map s) {
     if (stateCode in [99,9,2,3,8]) return "idle"
     if (stateCode in [4,5])        return "heating"
-    if (stateCode in [6,7])        return ((s.grill as int) >= (s.set as int) - 5) ? "idle" : "heating"
+    if (stateCode in [6,7])        return (s.grill != null && s.set != null && (s.grill as int) >= (s.set as int) - 5) ? "idle" : "heating"
     return "idle"
 }
 
