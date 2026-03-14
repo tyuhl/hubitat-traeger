@@ -6,7 +6,7 @@
   "dateReleased": "2026-03-14",
   "releaseNotes": "Initial release — Traeger WiFire grill integration via AWS IoT MQTT over WebSocket",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
-  "communityLink": "",
+  "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [
     {
       "id": "8b616ca2-cde8-4a44-aa23-3d11e614faa3",
