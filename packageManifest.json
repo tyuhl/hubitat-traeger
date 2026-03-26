@@ -1,10 +1,10 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimumHEVersion": "2.2.1",
-  "dateReleased": "2026-03-14",
-  "releaseNotes": "Initial release — Traeger WiFire grill integration via AWS IoT MQTT over WebSocket",
+  "dateReleased": "2026-03-26",
+  "releaseNotes": "Fix reconnect storm when grill is offline (exponential backoff), fix null cast on device.currentValue, fix Elvis operator treating 0 as falsy for pellet/timer values, fix auth response parsing crash, add null guard for token expiration",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [

@@ -89,6 +89,7 @@ def updated() {
 
 def initialize() {
     logDebug "initialize()"
+    state.reconnectAttempt = 0
     disconnectMqtt()
     runIn(5, "connectMqtt")
 }
@@ -109,7 +110,7 @@ def connectMqtt() {
     if (!url) {
         log.error "[Traeger:${device.label}] Could not get signed MQTT URL from parent app"
         sendEvent(name: "mqttStatus", value: "error: no URL")
-        runIn(60, "connectMqtt")
+        scheduleReconnect()
         return
     }
 
@@ -125,11 +126,26 @@ def connectMqtt() {
     } catch (Exception e) {
         log.error "[Traeger:${device.label}] WebSocket connect failed (${e.class.simpleName}): ${e.message}"
         sendEvent(name: "mqttStatus", value: "error: ${e.message}")
-        runIn(60, "connectMqtt")
+        scheduleReconnect()
     }
 }
 
+private void scheduleReconnect() {
+    def attempt = (state.reconnectAttempt ?: 0) + 1
+    state.reconnectAttempt = attempt
+    // Exponential backoff: 30s, 60s, 120s, 240s, capped at 300s (5 min)
+    def delay = Math.min(30 * Math.pow(2, attempt - 1) as int, 300)
+    if (attempt <= 3) {
+        log.info "[Traeger:${device.label}] Reconnect attempt ${attempt} in ${delay}s"
+    } else {
+        logDebug "Reconnect attempt ${attempt} in ${delay}s"
+    }
+    runIn(delay, "connectMqtt")
+}
+
 def disconnectMqtt() {
+    unschedule("connectMqtt")
+    unschedule("sendMqttPing")
     try { interfaces.webSocket.close() } catch (Exception e) { /* ignore */ }
     state.wsConnected   = false
     state.mqttConnected = false
@@ -147,11 +163,17 @@ def webSocketStatus(String status) {
         sendEvent(name: "mqttStatus", value: "ws-open")
         sendMqttConnect()
     } else if (status.startsWith("failure:") || status.startsWith("status: closing")) {
-        log.warn "[Traeger:${device.label}] WebSocket closed: ${status}"
+        def attempt = state.reconnectAttempt ?: 0
+        if (attempt <= 2) {
+            log.warn "[Traeger:${device.label}] WebSocket closed: ${status}"
+        } else {
+            logDebug "WebSocket closed: ${status}"
+        }
         state.wsConnected   = false
         state.mqttConnected = false
+        unschedule("sendMqttPing")
         sendEvent(name: "mqttStatus", value: "disconnected")
-        runIn(30, "connectMqtt")
+        scheduleReconnect()
     }
 }
 
@@ -186,6 +208,7 @@ private void handleConnack(byte[] data) {
         log.info "[Traeger:${device.label}] MQTT CONNACK accepted — subscribing"
         state.mqttConnected = true
         sendEvent(name: "mqttStatus", value: "connected")
+        // Don't reset reconnectAttempt here — only reset when we actually receive data
         subscribeToGrill()
         runIn(2, "requestStateUpdate")
         // Ping every 50s (URL keepalive + MQTT keepalive)
@@ -193,7 +216,7 @@ private void handleConnack(byte[] data) {
     } else {
         log.warn "[Traeger:${device.label}] MQTT CONNACK refused, code=${returnCode}"
         sendEvent(name: "mqttStatus", value: "refused: ${returnCode}")
-        runIn(60, "connectMqtt")
+        scheduleReconnect()
     }
 }
 
@@ -307,6 +330,9 @@ private void handleStatePayload(Map payload) {
     logDebug "RAW payload keys: ${payload?.keySet()}"
     logDebug "RAW status: ${payload?.status}"
     if (payload?.acc) logDebug "RAW acc: ${payload.acc}"
+
+    // Successfully receiving data — reset reconnect backoff
+    state.reconnectAttempt = 0
 
     def s = payload?.status
     if (!s) { logDebug "No status block"; return }
