@@ -223,7 +223,7 @@ String getSignedMqttUrl() {
             state.mqttUrl        = resp.data.signedUrl
             def expSec           = (resp.data.expirationSeconds ?: 300) as Long
             state.mqttUrlExpires = now() + (expSec * 1000L)
-            log.info "[TraegerApp] MQTT URL obtained (expires ${expSec}s): ${state.mqttUrl?.take(60)}…"
+            logDebug "[TraegerApp] MQTT URL obtained (expires ${expSec}s): ${state.mqttUrl?.take(60)}…"
         }
         return state.mqttUrl
     } catch (Exception e) {
