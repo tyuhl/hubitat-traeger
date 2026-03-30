@@ -114,7 +114,7 @@ def connectMqtt() {
         return
     }
 
-    log.info "[Traeger:${device.label}] Connecting WebSocket to: ${url.take(80)}…"
+    logDebug "Connecting WebSocket to: ${url.take(80)}…"
     try {
         interfaces.webSocket.connect(
             url,
@@ -158,7 +158,7 @@ def disconnectMqtt() {
 def webSocketStatus(String status) {
     logDebug "webSocketStatus: ${status}"
     if (status.startsWith("status: open")) {
-        log.info "[Traeger:${device.label}] WebSocket open — sending MQTT CONNECT"
+        logDebug "WebSocket open — sending MQTT CONNECT"
         state.wsConnected = true
         sendEvent(name: "mqttStatus", value: "ws-open")
         sendMqttConnect()
@@ -205,7 +205,7 @@ private void handleConnack(byte[] data) {
     if (data.length < 4) return
     int returnCode = data[3] & 0xFF
     if (returnCode == 0) {
-        log.info "[Traeger:${device.label}] MQTT CONNACK accepted — subscribing"
+        logDebug "MQTT CONNACK accepted — subscribing"
         state.mqttConnected = true
         sendEvent(name: "mqttStatus", value: "connected")
         // Don't reset reconnectAttempt here — only reset when we actually receive data
@@ -286,7 +286,7 @@ private void subscribeToGrill() {
     writeUTF(buf, topic)
     buf.write(1)  // QoS 1
     sendMqttFrame(0x82, buf.toByteArray())
-    log.info "[Traeger:${device.label}] Subscribed to ${topic}"
+    logDebug "Subscribed to ${topic}"
 }
 
 private void sendMqttPuback(int packetId) {
@@ -332,6 +332,9 @@ private void handleStatePayload(Map payload) {
     if (payload?.acc) logDebug "RAW acc: ${payload.acc}"
 
     // Successfully receiving data — reset reconnect backoff
+    if (state.reconnectAttempt > 0) {
+        log.info "[Traeger:${device.label}] MQTT connected — receiving grill data"
+    }
     state.reconnectAttempt = 0
 
     def s = payload?.status
