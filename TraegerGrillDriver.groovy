@@ -96,6 +96,8 @@ def updated() {
 
 def initialize() {
     logDebug "initialize()"
+    // suppress unsupported modes so they aren't shown in thermostat tile
+    sendEvent(name: "supportedThermostatModes", value: ["heat", "off"])
     state.reconnectAttempt = 0
     disconnectMqtt()
     runIn(5, "connectMqtt")
