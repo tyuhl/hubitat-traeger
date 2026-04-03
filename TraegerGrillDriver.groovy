@@ -1,6 +1,6 @@
 /**
  * Traeger WiFire Grill Driver for Hubitat Elevation
- * Version: 1.2.1
+ * Version: 1.3.0
  *
  * Uses interfaces.webSocket with manual MQTT framing (same approach as Mysa MQTT driver)
  * because Hubitat's interfaces.mqtt cannot connect to AWS IoT WSS pre-signed URLs.
@@ -12,6 +12,9 @@
  *  - Commands sent via REST POST through parent app (not MQTT)
  *
  * Change log:
+ *  1.3.0 - Add session/cumulative active time tracking with reset command
+ *          (thanks @tyuhl), restrict supportedThermostatModes to heat/off,
+ *          fix pellet-low button firing on every poll instead of falling edge
  *  1.2.0 - Demote connection step messages to debug, fix exponential backoff
  *          being defeated by retained MQTT messages resetting attempt counter
  *  1.1.0 - Exponential backoff on reconnect, adaptive log levels, fix null
@@ -53,6 +56,8 @@ metadata {
         attribute "errors",              "number"
         attribute "mqttStatus",          "string"
         attribute "lastUpdate",          "string"
+        attribute "grillSessionTime",    "string"   // HH:MM:SS — current session duration (resets each cook)
+        attribute "grillTotalActiveTime","string"   // HH:MM:SS — lifetime cumulative active time
 
         capability "PushableButton"
         // Button map:
@@ -73,6 +78,7 @@ metadata {
         command "connectMqtt"
         command "disconnectMqtt"
         command "initializeMqtt"
+        command "resetGrillActiveTime"
     }
 
     preferences {
@@ -86,6 +92,8 @@ def installed() {
     log.info "[Traeger:${device.label}] Installed"
     sendEvent(name: "mqttStatus", value: "disconnected")
     sendEvent(name: "numberOfButtons", value: 5)
+    sendEvent(name: "grillSessionTime", value: "00:00:00")
+    sendEvent(name: "grillTotalActiveTime", value: "00:00:00")
     runIn(3, "initialize")
 }
 
@@ -334,7 +342,79 @@ private void writeUTF(ByteArrayOutputStream buf, String s) {
     buf.write(b)
 }
 
-// ─── State Parsing ────────────────────────────────────────────────────────────
+// ─── Active Time Tracking ─────────────────────────────────────────────────────
+
+// Active state codes: igniting(4), preheating(5), manual_cook(6), custom_cook(7)
+// idle(3) is included because the grill is powered on and consuming pellets
+@groovy.transform.Field static final List ACTIVE_STATE_CODES = [3, 4, 5, 6, 7]
+
+/**
+ * Called each time a state payload arrives with a valid system_status.
+ * Starts the session clock on transition into an active state,
+ * and flushes elapsed time to the cumulative total on transition out.
+ */
+private void updateActiveTime(int stateCode, String prevGrillState) {
+    boolean nowActive  = stateCode in ACTIVE_STATE_CODES
+    boolean wasActive  = prevGrillState in ["idle", "igniting", "preheating", "manual_cook", "custom_cook"]
+
+    if (nowActive && !wasActive) {
+        // Grill just turned on — start session clock
+        state.sessionStartMs = now()
+        log.info "[Traeger:${device.label}] Grill session started"
+        sendEvent(name: "grillSessionTime", value: "00:00:00")
+        // Tick the session display every minute while active
+        runIn(60, "tickSessionTime")
+
+    } else if (!nowActive && wasActive) {
+        // Grill just turned off — flush session into cumulative total
+        if (state.sessionStartMs) {
+            long sessionMs  = now() - (state.sessionStartMs as Long)
+            long totalMs    = (state.totalActiveMs ?: 0L) + sessionMs
+            state.totalActiveMs  = totalMs
+            state.sessionStartMs = null
+            unschedule("tickSessionTime")
+            def sessionStr = msToHMS(sessionMs)
+            log.info "[Traeger:${device.label}] Grill session ended — session: ${sessionStr}, total: ${msToHMS(totalMs)}"
+            sendEvent(name: "grillSessionTime",     value: "00:00:00")
+            sendEvent(name: "grillTotalActiveTime", value: msToHMS(totalMs))
+        }
+
+    } else if (nowActive && state.sessionStartMs) {
+        // Still active — refresh session display (called by tickSessionTime too)
+        long sessionMs = now() - (state.sessionStartMs as Long)
+        sendEvent(name: "grillSessionTime",     value: msToHMS(sessionMs))
+        sendEvent(name: "grillTotalActiveTime", value: msToHMS((state.totalActiveMs ?: 0L) + sessionMs))
+    }
+}
+
+/** Scheduled every 60s while grill is active to keep the dashboard ticking. */
+def tickSessionTime() {
+    if (state.sessionStartMs) {
+        long sessionMs = now() - (state.sessionStartMs as Long)
+        sendEvent(name: "grillSessionTime",     value: msToHMS(sessionMs))
+        sendEvent(name: "grillTotalActiveTime", value: msToHMS((state.totalActiveMs ?: 0L) + sessionMs))
+        runIn(60, "tickSessionTime")
+    }
+}
+
+/** Reset cumulative total and current session. */
+def resetGrillActiveTime() {
+    log.info "[Traeger:${device.label}] Resetting grill active time"
+    state.totalActiveMs  = 0L
+    state.sessionStartMs = state.sessionStartMs ? now() : null  // keep session running if active
+    sendEvent(name: "grillTotalActiveTime", value: "00:00:00")
+    sendEvent(name: "grillSessionTime",     value: "00:00:00")
+}
+
+private String msToHMS(long ms) {
+    long totalSec = ms / 1000L
+    long h = totalSec / 3600
+    long m = (totalSec % 3600) / 60
+    long s = totalSec % 60
+    return String.format("%02d:%02d:%02d", h, m, s)
+}
+
+
 
 private void handleStatePayload(Map payload) {
     logDebug "RAW payload keys: ${payload?.keySet()}"
@@ -375,6 +455,8 @@ private void handleStatePayload(Map payload) {
         sendEvent(name:"switch",         value:(stateCode in [3,4,5,6,7]) ? "on" : "off")
         sendEvent(name:"thermostatMode", value:(stateCode in [3,4,5,6,7]) ? "heat" : "off")
         sendEvent(name:"thermostatOperatingState", value:thermostatOpState(stateCode as int, s))
+        // Track cumulative and session active time
+        updateActiveTime(stateCode as int, prevGrillState ?: "")
     }
     if (s.grill != null && s.set != null && stateCode != null) {
         sendEvent(name:"heatingState", value:heatingStateName(stateCode as int, s.grill as int, s.set as int))
@@ -404,11 +486,11 @@ private void handleStatePayload(Map payload) {
     def pelletLevel = s.pellet_level != null ? s.pellet_level : (s.pellet != null ? s.pellet : s.pellets)
     if (pelletLevel != null) {
         def pct = pelletLevel as int
+        def prevPct = (device.currentValue("pelletLevel") ?: 100) as int
         sendEvent(name:"pelletLevel", value:pct, unit:"%")
-        // Button 3: pellets low
-        if (pct < 20) pushButton(3)
+        // Button 3: pellets low — only fire on falling edge (>= 20 → < 20)
+        if (pct < 20 && prevPct >= 20) pushButton(3)
     }
-
     // Probe alarm fired (probe reached target temp)
     if (s.probe_alarm_fired != null) {
         def fired = (s.probe_alarm_fired as int) == 1
