@@ -1,7 +1,7 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minimumHEVersion": "2.2.1",
   "dateReleased": "2026-04-05",
   "releaseNotes": "Reduce log noise when grill is offline: demote connection step messages to debug, fix exponential backoff being defeated by retained MQTT messages resetting the attempt counter every cycle",
