@@ -1,6 +1,6 @@
 /**
  * Traeger WiFire Grill Driver for Hubitat Elevation
- * Version: 1.0.0
+ * Version: 1.2.0
  *
  * Uses interfaces.webSocket with manual MQTT framing (same approach as Mysa MQTT driver)
  * because Hubitat's interfaces.mqtt cannot connect to AWS IoT WSS pre-signed URLs.
@@ -10,6 +10,13 @@
  *  - MQTT CONNECT/SUBSCRIBE/PINGREQ implemented manually as byte packets
  *  - Incoming PUBLISH packets parsed for grill state
  *  - Commands sent via REST POST through parent app (not MQTT)
+ *
+ * Change log:
+ *  1.2.0 - Demote connection step messages to debug, fix exponential backoff
+ *          being defeated by retained MQTT messages resetting attempt counter
+ *  1.1.0 - Exponential backoff on reconnect, adaptive log levels, fix null
+ *          cast and Elvis operator issues
+ *  1.0.0 - Initial release
  */
 
 import groovy.json.JsonSlurper
