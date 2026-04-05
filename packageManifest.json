@@ -3,8 +3,8 @@
   "author": "Craig Dewar",
   "version": "1.2.0",
   "minimumHEVersion": "2.2.1",
-  "dateReleased": "2026-03-30",
-  "releaseNotes": "Reduce log noise when grill is offline: demote connection step messages to debug, log single info message only when grill data is received after reconnect",
+  "dateReleased": "2026-04-05",
+  "releaseNotes": "Reduce log noise when grill is offline: demote connection step messages to debug, fix exponential backoff being defeated by retained MQTT messages resetting the attempt counter every cycle",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [
