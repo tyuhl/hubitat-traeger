@@ -149,6 +149,7 @@ def disconnectMqtt() {
     try { interfaces.webSocket.close() } catch (Exception e) { /* ignore */ }
     state.wsConnected   = false
     state.mqttConnected = false
+    state.connectedAt   = 0
     state.packetId      = 0
     sendEvent(name: "mqttStatus", value: "disconnected")
 }
@@ -207,8 +208,8 @@ private void handleConnack(byte[] data) {
     if (returnCode == 0) {
         logDebug "MQTT CONNACK accepted — subscribing"
         state.mqttConnected = true
+        state.connectedAt = now()
         sendEvent(name: "mqttStatus", value: "connected")
-        // Don't reset reconnectAttempt here — only reset when we actually receive data
         subscribeToGrill()
         runIn(2, "requestStateUpdate")
         // Ping every 50s (URL keepalive + MQTT keepalive)
@@ -331,11 +332,17 @@ private void handleStatePayload(Map payload) {
     logDebug "RAW status: ${payload?.status}"
     if (payload?.acc) logDebug "RAW acc: ${payload.acc}"
 
-    // Successfully receiving data — reset reconnect backoff
-    if (state.reconnectAttempt > 0) {
-        log.info "[Traeger:${device.label}] MQTT connected — receiving grill data"
+    // Only reset reconnect backoff if connection has been stable for > 60s.
+    // Retained/cached MQTT messages arrive immediately after subscribe, so a
+    // short-lived connection (grill offline) would otherwise reset the counter
+    // every cycle, defeating the exponential backoff.
+    def connectedFor = state.connectedAt ? (now() - (state.connectedAt as long)) : 0
+    if (connectedFor > 60000) {
+        if (state.reconnectAttempt > 0) {
+            log.info "[Traeger:${device.label}] MQTT connected — receiving grill data"
+        }
+        state.reconnectAttempt = 0
     }
-    state.reconnectAttempt = 0
 
     def s = payload?.status
     if (!s) { logDebug "No status block"; return }
