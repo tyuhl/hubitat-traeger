@@ -1,6 +1,6 @@
 /**
  * Traeger WiFire Grill Driver for Hubitat Elevation
- * Version: 1.2.0
+ * Version: 1.2.1
  *
  * Uses interfaces.webSocket with manual MQTT framing (same approach as Mysa MQTT driver)
  * because Hubitat's interfaces.mqtt cannot connect to AWS IoT WSS pre-signed URLs.

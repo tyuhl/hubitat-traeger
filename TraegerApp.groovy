@@ -1,7 +1,7 @@
 /**
  * Traeger WiFire Integration for Hubitat Elevation
  * App: TraegerApp.groovy
- * Version: 1.2.0
+ * Version: 1.2.1
  *
  * Responsibilities:
  *   - AWS Cognito authentication + token refresh
