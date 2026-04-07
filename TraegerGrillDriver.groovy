@@ -414,7 +414,7 @@ private String msToHMS(long ms) {
     return String.format("%02d:%02d:%02d", h, m, s)
 }
 
-
+// ─── State Parsing ────────────────────────────────────────────────────────────
 
 private void handleStatePayload(Map payload) {
     logDebug "RAW payload keys: ${payload?.keySet()}"
@@ -486,11 +486,13 @@ private void handleStatePayload(Map payload) {
     def pelletLevel = s.pellet_level != null ? s.pellet_level : (s.pellet != null ? s.pellet : s.pellets)
     if (pelletLevel != null) {
         def pct = pelletLevel as int
-        def prevPct = (device.currentValue("pelletLevel") ?: 100) as int
+        def prev = device.currentValue("pelletLevel")
+        def prevPct = (prev != null ? prev : 100) as int
         sendEvent(name:"pelletLevel", value:pct, unit:"%")
         // Button 3: pellets low — only fire on falling edge (>= 20 → < 20)
         if (pct < 20 && prevPct >= 20) pushButton(3)
     }
+
     // Probe alarm fired (probe reached target temp)
     if (s.probe_alarm_fired != null) {
         def fired = (s.probe_alarm_fired as int) == 1

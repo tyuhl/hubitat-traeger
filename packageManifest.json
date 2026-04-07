@@ -1,10 +1,10 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "minimumHEVersion": "2.2.1",
-  "dateReleased": "2026-04-05",
-  "releaseNotes": "Reduce log noise when grill is offline: demote connection step messages to debug, fix exponential backoff being defeated by retained MQTT messages resetting the attempt counter every cycle",
+  "dateReleased": "2026-04-07",
+  "releaseNotes": "Add session and cumulative active time tracking with reset command (thanks @tyuhl), restrict thermostat tile to heat/off modes, fix pellet-low button firing on every poll instead of falling edge",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [
