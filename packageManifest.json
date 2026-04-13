@@ -1,10 +1,10 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "minimumHEVersion": "2.2.1",
-  "dateReleased": "2026-04-07",
-  "releaseNotes": "Add session and cumulative active time tracking with reset command (thanks @tyuhl), restrict thermostat tile to heat/off modes, fix pellet-low button firing on every poll instead of falling edge",
+  "dateReleased": "2026-04-13",
+  "releaseNotes": "Fix: Switch API base URL to new Traeger-branded domain (mobile-iot-api.iot.traegergrills.io) after Traeger decommissioned the old AWS API Gateway hostname",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [
