@@ -1,10 +1,10 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.3.1",
+  "version": "1.4.1",
   "minimumHEVersion": "2.2.1",
   "dateReleased": "2026-04-13",
-  "releaseNotes": "Fix: Switch API base URL to new Traeger-branded domain (mobile-iot-api.iot.traegergrills.io) after Traeger decommissioned the old AWS API Gateway hostname",
+  "releaseNotes": "Quiet down reconnect/close log messages when grill is offline (info/warn → debug after first attempt), harden the backoff reset condition against state quirks that were keeping the counter stuck at 1",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [

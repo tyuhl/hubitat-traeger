@@ -1,10 +1,10 @@
 /**
  * Traeger WiFire Integration for Hubitat Elevation
  * App: TraegerApp.groovy
- * Version: 1.3.1
+ * Version: 1.4.1
  *
  * Responsibilities:
- *   - AWS Cognito authentication + token refresh
+ *   - Traeger auth endpoint for token management
  *   - Grill discovery via REST
  *   - Fetching pre-signed MQTT WSS URL (handed to driver)
  *   - Sending grill commands via REST POST
@@ -12,6 +12,8 @@
  * The driver owns MQTT (interfaces.mqtt is not available in apps).
  *
  * Change log:
+ *  1.4.1 - Companion release for driver log noise fixes
+ *  1.4.0 - Migrate from AWS Cognito to Traeger auth endpoint (24h tokens)
  *  1.3.1 - Switch API base URL to new Traeger-branded domain
  *  1.3.0 - Companion release for driver session time tracking feature
  *  1.2.0 - Demote MQTT URL fetch message to debug
@@ -23,7 +25,7 @@ definition(
     name: "Traeger Integration",
     namespace: "craigde",
     author: "Craig Dewar",
-    description: "Integrates Traeger WiFire grills with Hubitat via AWS Cognito + MQTT",
+    description: "Integrates Traeger WiFire grills with Hubitat via Traeger cloud API + MQTT",
     category: "My Apps",
     iconUrl: "",
     iconX2Url: "",
@@ -37,12 +39,11 @@ preferences {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-private String cognitoClientId()    { "4id473dsrcq4kevlgrikukqn2a" }
-private String apiBase()            { "https://mobile-iot-api.iot.traegergrills.io" }
-private String driverName()         { "Traeger Grill" }
-private String driverNamespace()    { "craigde" }
-private int    tokenRefreshMargin() { 300 }   // seconds before expiry to refresh
-private int    mqttUrlMargin()      { 300 }   // seconds before URL expiry to refresh
+private String authBase()            { "https://auth-api.iot.traegergrills.io" }
+private String apiBase()             { "https://mobile-iot-api.iot.traegergrills.io" }
+private String driverName()          { "Traeger Grill" }
+private String driverNamespace()     { "craigde" }
+private int    tokenRefreshMargin()  { 300 }   // seconds before expiry to refresh
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
 
@@ -136,27 +137,14 @@ def uninstalled() {
 
 def authenticate() {
     logDebug "[TraegerApp] Authenticating as ${traegerUsername}"
-    def bodyMap = [
-        AuthFlow:       "USER_PASSWORD_AUTH",
-        AuthParameters: [USERNAME: traegerUsername, PASSWORD: traegerPassword],
-        ClientId:       cognitoClientId()
-    ]
-    def bodyJson = new groovy.json.JsonOutput().toJson(bodyMap)
     try {
-        httpPost([
-            uri:         "https://cognito-idp.us-west-2.amazonaws.com/",
-            contentType: "text/plain",
-            headers: [
-                "Content-Type": "application/x-amz-json-1.1",
-                "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth"
-            ],
-            body: bodyJson
+        httpPostJson([
+            uri:  "${authBase()}/tokens",
+            body: [username: traegerUsername, password: traegerPassword]
         ]) { resp ->
-            def parsed = resp.data instanceof Map ? resp.data : new groovy.json.JsonSlurper().parseText(resp.data.text)
-            def result = parsed.AuthenticationResult
-            state.accessToken  = result.IdToken
-            state.refreshToken = result.RefreshToken
-            state.tokenExpires = now() + ((result.ExpiresIn - tokenRefreshMargin()) * 1000L)
+            def data = resp.data instanceof Map ? resp.data : new groovy.json.JsonSlurper().parseText(resp.data.text)
+            state.accessToken  = data.idToken
+            state.tokenExpires = now() + (((data.expiresIn ?: 86400) - tokenRefreshMargin()) * 1000L)
             logDebug "[TraegerApp] Authenticated — token expires ${new Date((long)state.tokenExpires)}"
         }
     } catch (Exception e) {

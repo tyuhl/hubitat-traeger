@@ -1,6 +1,6 @@
 /**
  * Traeger WiFire Grill Driver for Hubitat Elevation
- * Version: 1.3.0
+ * Version: 1.4.1
  *
  * Uses interfaces.webSocket with manual MQTT framing (same approach as Mysa MQTT driver)
  * because Hubitat's interfaces.mqtt cannot connect to AWS IoT WSS pre-signed URLs.
@@ -12,6 +12,8 @@
  *  - Commands sent via REST POST through parent app (not MQTT)
  *
  * Change log:
+ *  1.4.1 - Quiet down reconnect/close logs (info/warn → debug after first
+ *          attempt), harden backoff reset against stale connectedAt state
  *  1.3.0 - Add session/cumulative active time tracking with reset command
  *          (thanks @tyuhl), restrict supportedThermostatModes to heat/off,
  *          fix pellet-low button firing on every poll instead of falling edge
@@ -152,7 +154,7 @@ private void scheduleReconnect() {
     state.reconnectAttempt = attempt
     // Exponential backoff: 30s, 60s, 120s, 240s, capped at 300s (5 min)
     def delay = Math.min(30 * Math.pow(2, attempt - 1) as int, 300)
-    if (attempt <= 3) {
+    if (attempt == 1) {
         log.info "[Traeger:${device.label}] Reconnect attempt ${attempt} in ${delay}s"
     } else {
         logDebug "Reconnect attempt ${attempt} in ${delay}s"
@@ -182,13 +184,14 @@ def webSocketStatus(String status) {
         sendMqttConnect()
     } else if (status.startsWith("failure:") || status.startsWith("status: closing")) {
         def attempt = state.reconnectAttempt ?: 0
-        if (attempt <= 2) {
+        if (attempt == 0) {
             log.warn "[Traeger:${device.label}] WebSocket closed: ${status}"
         } else {
             logDebug "WebSocket closed: ${status}"
         }
         state.wsConnected   = false
         state.mqttConnected = false
+        state.connectedAt   = 0
         unschedule("sendMqttPing")
         sendEvent(name: "mqttStatus", value: "disconnected")
         scheduleReconnect()
@@ -421,13 +424,13 @@ private void handleStatePayload(Map payload) {
     logDebug "RAW status: ${payload?.status}"
     if (payload?.acc) logDebug "RAW acc: ${payload.acc}"
 
-    // Only reset reconnect backoff if connection has been stable for > 60s.
-    // Retained/cached MQTT messages arrive immediately after subscribe, so a
-    // short-lived connection (grill offline) would otherwise reset the counter
-    // every cycle, defeating the exponential backoff.
-    def connectedFor = state.connectedAt ? (now() - (state.connectedAt as long)) : 0
-    if (connectedFor > 60000) {
-        if (state.reconnectAttempt > 0) {
+    // Only reset reconnect backoff if MQTT is currently connected AND has
+    // been stable for > 60s. The mqttConnected guard prevents stale/buffered
+    // PUBLISHes from previous cycles defeating the exponential backoff.
+    long connAt = (state.connectedAt ?: 0L) as long
+    long connectedFor = (connAt > 0L) ? (now() - connAt) : 0L
+    if (state.mqttConnected && connAt > 0L && connectedFor > 60000L) {
+        if ((state.reconnectAttempt ?: 0) > 0) {
             log.info "[Traeger:${device.label}] MQTT connected — receiving grill data"
         }
         state.reconnectAttempt = 0
