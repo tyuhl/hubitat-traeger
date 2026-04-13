@@ -1,10 +1,10 @@
 {
   "packageName": "Traeger WiFire Grill Integration",
   "author": "Craig Dewar",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "minimumHEVersion": "2.2.1",
   "dateReleased": "2026-04-13",
-  "releaseNotes": "Migrate from AWS Cognito to Traeger auth endpoint (24-hour tokens instead of 1-hour), use Traeger-branded API domains for future resilience",
+  "releaseNotes": "Quiet down reconnect/close log messages when grill is offline (info/warn → debug after first attempt), harden the backoff reset condition against state quirks that were keeping the counter stuck at 1",
   "documentationLink": "https://github.com/craigde/hubitat-traeger",
   "communityLink": "https://community.hubitat.com/t/release-traeger-wifire-integration/",
   "apps": [
