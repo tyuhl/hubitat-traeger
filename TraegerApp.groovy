@@ -1,7 +1,7 @@
 /**
  * Traeger WiFire Integration for Hubitat Elevation
  * App: TraegerApp.groovy
- * Version: 1.3.0
+ * Version: 1.3.1
  *
  * Responsibilities:
  *   - AWS Cognito authentication + token refresh
@@ -12,6 +12,7 @@
  * The driver owns MQTT (interfaces.mqtt is not available in apps).
  *
  * Change log:
+ *  1.3.1 - Switch API base URL to new Traeger-branded domain
  *  1.3.0 - Companion release for driver session time tracking feature
  *  1.2.0 - Demote MQTT URL fetch message to debug
  *  1.1.0 - Fix auth response parsing, add null guard for token expiration
