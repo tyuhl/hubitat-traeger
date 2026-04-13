@@ -37,7 +37,7 @@ preferences {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 private String cognitoClientId()    { "4id473dsrcq4kevlgrikukqn2a" }
-private String apiBase()            { "https://1ywgyc65d1.execute-api.us-west-2.amazonaws.com/prod" }
+private String apiBase()            { "https://mobile-iot-api.iot.traegergrills.io" }
 private String driverName()         { "Traeger Grill" }
 private String driverNamespace()    { "craigde" }
 private int    tokenRefreshMargin() { 300 }   // seconds before expiry to refresh
