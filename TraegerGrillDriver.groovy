@@ -12,6 +12,7 @@
  *  - Commands sent via REST POST through parent app (not MQTT)
  *
  * Change log:
+ *  1.5.0 - FTY Child Button work
  *  1.4.1 - Quiet down reconnect/close logs (info/warn → debug after first
  *          attempt), harden backoff reset against stale connectedAt state
  *  1.3.0 - Add session/cumulative active time tracking with reset command
@@ -464,8 +465,16 @@ private void handleStatePayload(Map payload) {
     if (s.grill != null && s.set != null && stateCode != null) {
         sendEvent(name:"heatingState", value:heatingStateName(stateCode as int, s.grill as int, s.set as int))
     }
-    if (s.smoke     != null) sendEvent(name:"superSmoke", value:s.smoke    ? "on" : "off")
-    if (s.keepwarm  != null) sendEvent(name:"keepWarm",   value:s.keepwarm ? "on" : "off")
+    if (s.smoke     != null) {
+        def v = s.smoke ? "on" : "off"
+        sendEvent(name:"superSmoke", value: v)
+        parent?.syncChildSwitch("supersmoke", v)
+    }
+    if (s.keepwarm  != null) {
+        def v = s.keepwarm ? "on" : "off"
+        sendEvent(name:"keepWarm",   value: v)
+         parent?.syncChildSwitch("keepwarm", v)
+    }
     if (s.connected != null) sendEvent(name:"connected",  value:s.connected.toString())
     if (s.probe_state != null) sendEvent(name:"probeState", value:probeStateName(s.probe_state as int))
     // probe_con: 1=connected, 0=not connected

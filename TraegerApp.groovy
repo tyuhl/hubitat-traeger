@@ -12,6 +12,7 @@
  * The driver owns MQTT (interfaces.mqtt is not available in apps).
  *
  * Change log:
+ *  1.5.0 - FTY Child Button work - 2
  *  1.4.1 - Companion release for driver log noise fixes
  *  1.4.0 - Migrate from AWS Cognito to Traeger auth endpoint (24h tokens)
  *  1.3.1 - Switch API base URL to new Traeger-branded domain
@@ -36,12 +37,15 @@ preferences {
     page(name: "mainPage")
     page(name: "credentialsPage")
     page(name: "devicesPage")
+    page(name: "selectGrillPage")
+    page(name: "manageSwitchesPage")
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 private String authBase()            { "https://auth-api.iot.traegergrills.io" }
 private String apiBase()             { "https://mobile-iot-api.iot.traegergrills.io" }
 private String driverName()          { "Traeger Grill" }
+private String childSwitchDriver()   { "Generic Component Switch" }
 private String driverNamespace()     { "craigde" }
 private int    tokenRefreshMargin()  { 300 }   // seconds before expiry to refresh
 
@@ -53,7 +57,9 @@ def mainPage() {
             href "credentialsPage", title: "Account Credentials",
                 description: traegerUsername ? "Configured: ${traegerUsername}" : "Not configured — tap to set"
             href "devicesPage", title: "Manage Devices",
-                description: getChildDevices()?.size() ? "${getChildDevices().size()} device(s) installed" : "No devices"
+                description: getChildGrillDevices()?.size() ? "${getChildGrillDevices().size()} device(s) installed" : "No devices"
+            href "selectGrillPage", title: "Manage Grill Dashboard Switches"
+
         }
         section("Options") {
             input "pollInterval", "number", title: "Poll interval (minutes)", defaultValue: 15, range: "5..60"
@@ -85,17 +91,56 @@ def devicesPage() {
             section("Discovered Grills") {
                 state.discoveredGrills.each { grill ->
                     def existing = getChildDevice("traeger-${grill.thingName}")
-                    paragraph "${grill.thingName} — ${existing ? 'Installed ✓' : 'Not installed'}"
+                    if ( isChildGrillDevice(existing) ) {
+                        paragraph "${grill.thingName} — ${existing ? 'Installed ✓' : 'Not installed'}"
+                    }
                 }
             }
         }
         section("Installed Devices") {
             getChildDevices()?.each { dev ->
-                paragraph "${dev.label} [${dev.getDataValue('thingName')}]"
-                input "btnRefresh_${dev.deviceNetworkId}", "button", title: "Reconnect MQTT: ${dev.label}"
+                if ( isChildGrillDevice(dev) ) {
+                    paragraph "${dev.label} [${dev.getDataValue('thingName')}]"
+                    input "btnRefresh_${dev.deviceNetworkId}", "button", title: "Reconnect MQTT: ${dev.label}"
+                }
             }
         }
     }
+}
+
+def selectGrillPage() {
+	dynamicPage(name:"selectGrillPage", title: "Dashboard switches can control their associated grill functions and they mirror the state (on or off) of the function.", nextPage: "manageSwitchesPage") {
+        section {
+            paragraph "<h3>First, Select the grill for the dashboard switches:</h3>"
+             input name:'driverTarget', type: 'device.TraegerGrill', title: 'Grill to add or delete switches:',
+            required: true, submitOnChange: true
+        }
+        //init dashboard switch settings outside the context where the switches will be rendered so re-rendering doesn't
+        //cause problems
+        if ( driverTarget ) {
+            initDashboardSwitchSettings()
+        }
+        else {
+            log.error("No grill selected to configure Dashboard Switches")
+        }
+   }  
+}
+
+def manageSwitchesPage() {
+	dynamicPage(name:"manageSwitchesPage", title: "Second, set or clear each item to create or remove the associated switch, Then click the update button to apply your changes.", nextPage: "mainPage") {
+        if ( driverTarget ) {
+            section {
+                paragraph "<strong>Dashboard Switches for ${driverTarget}:</strong>"
+                childSwitchMap(null).each { key, cfg -> 
+                    def swType = key + "-input"
+                    input "${swType}", 'bool', title: "${cfg.label}", submitOnChange: true
+                }      
+            }  
+            section {
+                input 'btnManageSwitches', 'button', title: 'Update'
+            }
+       }
+	}
 }
 
 def appButtonHandler(buttonName) {
@@ -105,6 +150,10 @@ def appButtonHandler(buttonName) {
         def dni = buttonName.replace("btnRefresh_", "")
         getChildDevice(dni)?.connectMqtt()
         return
+    }
+    if (buttonName == 'btnManageSwitches') { 
+        manageSwitches() 
+        return 
     }
 }
 
@@ -130,7 +179,131 @@ def initialize() {
 }
 
 def uninstalled() {
+    deleteChildDevices()
+}
+
+def deleteChildDevices() {
     getChildDevices().each { deleteChildDevice(it.deviceNetworkId) }
+}
+
+// ─── Child Switch Devices ─────────────────────────────────────────────────────
+
+// Called by Hubitat when a Generic Component Switch child receives on/off
+void componentOn(cd) {
+    sendEvent(cd, [name: "switch", value: "on", descriptionText: "${cd.displayName} is on"])
+    def key = cd.deviceNetworkId.tokenize("-").last()
+    def cfg = childSwitchMap(cd)[key]
+    if (cfg) {
+        logDebug "Child on: ${cd.label}"
+        cfg.onCmd()
+    }
+}
+
+void componentOff(cd) {
+    sendEvent(cd, [name: "switch", value: "off", descriptionText: "${cd.displayName} is off"])
+    def key = cd.deviceNetworkId.tokenize("-").last()
+    def cfg = childSwitchMap(cd)[key]
+    if (cfg) {
+        logDebug "Child off: ${cd.label}"
+        cfg.offCmd()
+    }
+}
+
+void componentRefresh(cd) {
+    def key = cd.deviceNetworkId.tokenize("-").last()
+    def cfg = childSwitchMap(cd)[key]
+    if (cfg) {
+        logDebug "Child Refresh: ${cd.label}"
+        cfg.refreshCmd()
+    }
+}
+
+//called by the child driver
+private void syncChildSwitch(String key, String value) {
+    def child = null
+    getChildSwitchDevices()?.each {
+        if( it.deviceNetworkId.tokenize("-").last() == key) {
+            child = it
+        } 
+    }
+    if (child) {
+        child.parse([[name: "switch", value: value]])
+    }
+}
+
+private Map childSwitchMap(dev) {
+    def parentGrill = null
+    if ( dev ) {
+        def dni = dev.deviceNetworkId.substring(0, dev.deviceNetworkId.lastIndexOf('-'))
+        parentGrill = getChildDevice(dni)
+    }
+    return [
+        "supersmoke": [label: "Super Smoke", onCmd:  {parentGrill.setSuperSmoke("on")  }, 
+                                             offCmd: {parentGrill.setSuperSmoke("off") }, 
+                                             refreshCmd: { parentGrill.requestStateUpdate() }],
+        "keepwarm":   [label: "Keep Warm",   onCmd:  { parentGrill.setKeepWarm("on")    }, 
+                                             offCmd: { parentGrill.setKeepWarm("off")   },
+                                             refreshCmd: { parentGrill.requestStateUpdate() }]
+    ]
+}
+
+def initDashboardSwitchSettings() {
+    logDebug("Calling initDashboardSwitchSettings()")
+    def theGrill = settings?.driverTarget
+    if ( !theGrill ) {
+        log.error "No grill specified for Dashboard Switches"
+        return
+    }
+    childSwitchMap(null).each { key, cfg -> 
+        def swType = key + "-input"
+        def dev = null;
+        getChildSwitchDevicesForGrill(theGrill).each {
+            if( it.deviceNetworkId.tokenize("-").last() == key ){
+                dev = it
+            }
+        }
+        app.updateSetting(swType, (dev != null)) 
+    }
+}
+
+def manageSwitches() {
+    def theGrill = settings?.driverTarget
+    if (!theGrill) {
+        log.error "Error: No grill selected for Manage Dashboard Switches"
+        return;
+    }
+    childSwitchMap(null).each { key, cfg -> 
+        def inputSetting = app.getSetting("${key}-input")
+        if (  inputSetting == null )
+        {
+            logDebug("Error: missing setting")
+            return;
+        }
+        def dev = null;
+        getChildSwitchDevicesForGrill(theGrill).each {
+            if( it.deviceNetworkId.tokenize("-").last() == key ){
+                dev = it
+            }
+        }
+        // Is there a change in the switch setting?
+        if ( dev && !inputSetting) {
+            deleteChildDevice(dev.deviceNetworkId) 
+            log.info "[Traeger:${theGrill.label}] Deleted child dashboard switch: ${cfg.label}"
+        } 
+        else if (inputSetting && !dev) {
+            def dni ="${theGrill.deviceNetworkId}-${key}"
+            def child = addChildDevice("hubitat", childSwitchDriver(), dni, [
+                label: "${theGrill.label} ${cfg.label}",
+                isComponent: false
+            ])
+            if ( child ) {
+                log.info "[Traeger:${theGrill.label}] Added child dashboard switch: ${cfg.label}"
+            }
+            else {
+                log.error "Error: Child dashboard switch not added"
+            }
+        }
+    }      
 }
 
 // ─── Authentication ───────────────────────────────────────────────────────────
@@ -255,22 +428,62 @@ def sendGrillCommand(String thingName, String command) {
 
 def scheduledPoll() {
     logDebug "[TraegerApp] Scheduled poll — checking drivers"
-    getChildDevices()?.each { dev ->
+    getChildGrillDevices()?.each { dev ->
         try {
             dev.scheduledRefresh()
-        } catch (Exception e) {
+        } 
+        catch (Exception e) {
             logDebug "[TraegerApp] Poll error for ${dev.label}: ${e.message}"
         }
     }
 }
 
 def initializeAllDrivers() {
-    getChildDevices()?.each { dev ->
-        try { dev.connectMqtt() }
-        catch (Exception e) { log.error "[TraegerApp] Failed to init MQTT for ${dev.label}: ${e.message}" }
+    getChildGrillDevices()?.each { dev ->
+        try { 
+            dev.connectMqtt() 
+        }
+        catch (Exception e) {
+                log.error "[TraegerApp] Failed to init MQTT for ${dev.label}: ${e.message}" 
+        }
     }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def logDebug(String msg) { if (enableDebug) log.debug msg }
+
+boolean isChildSwitchDevice(com.hubitat.app.ChildDeviceWrapper device) {return device.getTypeName() == childSwitchDriver()}
+boolean isChildGrillDevice(com.hubitat.app.ChildDeviceWrapper device) {return device.getTypeName() == driverName()}
+
+List getChildGrillDevices() {
+    List ls = []
+    getChildDevices()?.each { dev ->
+        if (isChildGrillDevice(dev) ) {
+            ls << dev
+        }
+    } 
+    return ls 
+}
+
+List getChildSwitchDevices() {
+    List ls = []
+    getChildDevices()?.each { dev ->
+        if (isChildSwitchDevice(dev) ) {
+            ls << dev
+        }
+    } 
+    return ls 
+}
+
+List getChildSwitchDevicesForGrill(theGrill) {
+    List ls = []
+    getChildDevices()?.each { dev ->
+        if (isChildSwitchDevice(dev) ) {
+            if ( dev.deviceNetworkId.substring(0, dev.deviceNetworkId.lastIndexOf('-')) == theGrill.deviceNetworkId) {
+                ls << dev
+            }
+        }
+    } 
+    return ls 
+}
