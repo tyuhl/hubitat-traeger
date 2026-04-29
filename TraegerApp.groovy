@@ -12,7 +12,7 @@
  * The driver owns MQTT (interfaces.mqtt is not available in apps).
  *
  * Change log:
- *  1.5.0 - FTY Child Button work - 2
+ *  1.5.0 - FTY Dashboard Switch work
  *  1.4.1 - Companion release for driver log noise fixes
  *  1.4.0 - Migrate from AWS Cognito to Traeger auth endpoint (24h tokens)
  *  1.3.1 - Switch API base URL to new Traeger-branded domain

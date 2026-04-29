@@ -12,7 +12,7 @@
  *  - Commands sent via REST POST through parent app (not MQTT)
  *
  * Change log:
- *  1.5.0 - FTY Child Button work
+ *  1.5.0 - FTY Dashboard Switch work
  *  1.4.1 - Quiet down reconnect/close logs (info/warn → debug after first
  *          attempt), harden backoff reset against stale connectedAt state
  *  1.3.0 - Add session/cumulative active time tracking with reset command
